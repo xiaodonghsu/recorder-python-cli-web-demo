@@ -7,7 +7,7 @@ Python + [bleak](https://github.com/hbldh/bleak)，提供**命令行 REPL** 和 
 覆盖协议全部 4 个命令类型。离线 ASR/TTS 已独立放入项目根目录的
 [`Speech-to-text—text-to-speech`](../Speech-to-text%E2%80%94text-to-speech/README.md)，本 Demo 暂不直接修改语音 SDK。
 
-已在真机（声云 录音卡，广播名 CB08）上完整验证：扫描 → 连接 → 巡检 → 列表 → 下载 → 转文字。
+已在真机（声云 录音卡，广播名 CB08）上完整验证：扫描 → 连接 → 鉴权 → 巡检 → 列表 → 下载 → 转文字。
 
 ## 功能一览
 
