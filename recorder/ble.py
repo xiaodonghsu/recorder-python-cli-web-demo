@@ -101,7 +101,7 @@ class BleTransport:
         def on_detect(device: BLEDevice, adv) -> None:
             name = (device.name or adv.local_name or "")
             uuids = [_norm_uuid(u) for u in (adv.service_uuids or [])]
-            logger.debug("Found device: %s, UUIDs: %s", name, adv.service_uuids)
+            # logger.debug("Found device: %s, UUIDs: %s", name, adv.service_uuids)
             if SERVICE_UUID in uuids or \
                     any(k in name.lower() for k in DEVICE_NAME_KEYWORDS):
                 matched_devs[device.address] = device
@@ -198,6 +198,7 @@ class BleTransport:
         atomic=True 用于 2-2 等必须整帧单写的命令，超过载荷上限时
         直接报错而不是拆分，避免设备解析出错误文件名。
         """
+        logger.debug("write_frame frame=%s", frame.hex(" "))
         if self._client is None:
             raise RuntimeError("BLE 未连接")
         limit = self.payload_size

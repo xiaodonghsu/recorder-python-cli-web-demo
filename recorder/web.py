@@ -331,7 +331,7 @@ def create_app(output_dir: Path):
         busy_guard()
         async with op_lock:
             S["files"] = await recorder.get_file_list()
-        logger.debug("文件列表: %s", S["files"])
+        # logger.debug("文件列表: %s", S["files"])
         return [file_json(i, f) for i, f in enumerate(S["files"])]
 
     @app.post("/api/download")

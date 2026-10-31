@@ -668,7 +668,7 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.WARNING,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        format="%(asctime)s %(levelname)s (%(filename)s:%(funcName)s:%(lineno)d): %(message)s")
     try:
         asyncio.run(Cli(Path(args.output)).run())
     except KeyboardInterrupt:

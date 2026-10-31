@@ -99,6 +99,9 @@ class Recorder:
         self.transport.on_key = self._feed_key
         self.transport.on_disconnect = self._handle_disconnect
 
+        # 记录日志的标志(避免打印过多的1-1 data信息)
+        self._log_data_1_1 = True
+
     # ============================================================ 连接管理
 
     async def scan(self, timeout: float = DEFAULT_SCAN_TIMEOUT,
@@ -174,6 +177,15 @@ class Recorder:
                 chunk = b""
 
     def _handle_frame(self, frame: Frame, source: str) -> None:
+        if frame.type == 1 and frame.cmd == 1:
+            if self._log_data_1_1:
+                logger.debug("收到帧 type=%d cmd=%d body=%s len=%d", frame.type, frame.cmd, frame.body.hex(" "), len(frame.body))
+                self._log_data_1_1 = False
+        else:
+            logger.debug("收到帧 type=%d cmd=%d body=%s len=%d", frame.type, frame.cmd, frame.body, len(frame.body))
+            self._log_data_1_1 = True
+        # else:
+        #     logger.debug("收到帧 type=%d cmd=%d body=%s", frame.type, frame.cmd, frame.body.hex(" "))
         if frame.is_ack:
             logger.debug("ACK type=%d from %s", frame.type, source)
             return
@@ -225,6 +237,7 @@ class Recorder:
 
         atomic=True 时整帧单写（0-50/0-52 的 40B 帧不能拆包）。
         """
+        logger.debug("发送命令(r) type=%d cmd=%d params=%s", type_, cmd, params.hex(" "))
         resp_type = type_ if resp_type is None else resp_type
         key = (resp_type, resp_cmd)
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
@@ -237,6 +250,7 @@ class Recorder:
             self._waiters.pop(key, None)
 
     async def _send(self, type_: int, cmd: int, params: bytes = b"") -> None:
+        logger.debug("发送命令(s) type=%d cmd=%d params=%s", type_, cmd, params.hex(" "))
         frame = P.build_command(self._seq.next(), type_, cmd, params)
         await self.transport.write_frame(frame)
 
@@ -374,7 +388,7 @@ class Recorder:
             self._list_future = None
 
     def _handle_list_frame(self, frame: Frame) -> None:
-        logger.debug("收到文件列表帧: %s", frame.body)
+        # logger.debug("收到文件列表帧: %s", frame.body)
         entries = P.decode_file_list(frame.body)
         self._list_entries.extend(entries)
         self._arm_list_idle()  # 每帧刷新空闲收尾计时
@@ -659,23 +673,28 @@ class Recorder:
 
     async def record_start(self) -> int:
         """3-1/3-2 开始录音：1成功 2失败。"""
-        frame = await self._key_request(P.KEY_REC_START, P.KEY_REC_START_RESP)
-        return frame.body[0]
+        # frame = await self._key_request(P.KEY_REC_START, P.KEY_REC_START_RESP)
+        frame = await self._key_request(P.KEY_REC_START, P.KEY_REC_RESPONSE)
+        # return frame.body[0]
+        return frame.body
 
     async def record_save(self) -> int:
         """3-3/3-4 保存录音。"""
-        frame = await self._key_request(P.KEY_REC_SAVE, P.KEY_REC_SAVE_RESP)
-        return frame.body[0]
+        # frame = await self._key_request(P.KEY_REC_SAVE, P.KEY_REC_SAVE_RESP)
+        frame = await self._key_request(P.KEY_REC_SAVE, P.KEY_REC_RESPONSE)
+        # return frame.body[0]
+        return frame.body
 
     async def record_pause(self) -> int:
         """3-5/3-6 暂停录音。"""
-        frame = await self._key_request(P.KEY_REC_PAUSE, P.KEY_REC_PAUSE_RESP)
+        # frame = await self._key_request(P.KEY_REC_PAUSE, P.KEY_REC_PAUSE_RESP)
+        frame = await self._key_request(P.KEY_REC_PAUSE, P.KEY_REC_RESPONSE)
         return frame.body[0]
 
     async def record_resume(self) -> int:
         """3-7/3-8 继续录音。"""
-        frame = await self._key_request(P.KEY_REC_RESUME,
-                                        P.KEY_REC_RESUME_RESP)
+        # frame = await self._key_request(P.KEY_REC_RESUME, P.KEY_REC_RESUME_RESP)
+        frame = await self._key_request(P.KEY_REC_RESUME, P.KEY_REC_RESPONSE)
         return frame.body[0]
 
     async def record_state(self) -> int:

@@ -79,6 +79,7 @@ IMPORT_END_BAD_OFFSET = 2  # offset 过大
 IMPORT_END_STOPPED = 3     # 其他停止
 
 # --------------------------------------------------- 按键/录音控制 TYPE=3
+KEY_REC_RESPONSE = 0      # 按键应答
 KEY_REC_START = 1         # 开始录音
 KEY_REC_START_RESP = 2    # 开始结果: 1成功 2失败
 KEY_REC_SAVE = 3          # 保存录音

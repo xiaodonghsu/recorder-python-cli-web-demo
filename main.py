@@ -27,7 +27,7 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.WARNING,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        format="%(asctime)s %(levelname)s (%(filename)s:%(funcName)s:%(lineno)d): %(message)s")
     if args.web:
         from recorder.web import run_server
         run_server(Path(args.output), host=args.host, port=args.port)
