@@ -62,6 +62,8 @@ WiFi 控制命令全部属于 **TYPE=0（控制命令）**。
 | 22 | Dev→App | 关闭 WiFi 回复 | —（被动） | 无 body |
 | 23 | Dev→App | 有手机连接 WiFi | —（被动） | `1B`（1 已连接 / 0 未连接） |
 | 24 | App→Dev | 请求是否有手机连接 WiFi | `getWiFiHotspotState()` | 请求无参；应答 `0-23` |
+| **62** | **App→Dev** | **设置热点密码** | **`setWifiPassword()`** | **`len:2B` + `密码字节`；应答 `0-63`** |
+| **63** | **Dev→App** | **设置密码结果** | —（被动） | `1B` 结果码 |
 
 **实跑请求帧**（SEQ=0，CRC-16/XMODEM 已校验）：
 
@@ -80,6 +82,49 @@ WiFi 控制命令全部属于 **TYPE=0（控制命令）**。
 | `0-20` | 8 | 1B | 状态：0 = 打开成功，1 = 打开失败 |
 | `0-20` | 9 | 余下 | WiFi 名称（**仅状态 = 0 时存在**） |
 | `0-23` | 8 | 1B | 1 = 有手机连接，0 = 没有手机连接 |
+| `0-63` | 8 | 1B | 设置结果码（0 = 成功） |
+
+## 2.1 设置热点密码（`0-62` / `0-63`）
+
+请求 payload 布局：
+
+| **偏移** | **长度** | **含义** |
+| --- | --- | --- |
+| 0 | 1B | TYPE = `0x00` |
+| 1 | 1B | CMD = `0x3E`（62） |
+| 2 | 2B | 密码**字节**长度，**大端**（高字节在前） |
+| 4 | N | 密码 UTF-8 字节 |
+
+实跑帧（密码 `12345678`，SEQ=0）：
+
+```
+5A 00 19 03 0C 00 00 3E 00 08 31 32 33 34 35 36 37 38
+│  │  └─┬─┘ └─┬─┘ │  │  └──── len=8（大端）────┘└──── 密码 UTF-8 ────┘
+│  │    │    │    │  └──── CMD = 62 (0x3E)
+│  │    │    │    └────── TYPE = 0
+│  │    │    └─────────── LEN = 0x000C = 12（2+2+8）
+│  │    └──────────────── CRC = 0x0319
+│  └───────────────────── SEQ = 0
+└──────────────────────── MAGIC
+```
+
+**四条必须注意的规则**：
+
+| **规则** | **说明** |
+| --- | --- |
+| **长度字段是大端** | `payload[2]`=高字节、`payload[3]`=低字节。**与同族的设备名命令（0-60）相反** —— 设备名是小端。写反了设备就解不出密码长度 |
+| **长度按码点校验，字段填字节数** | 合法性校验是「8~16 个**字符**」（Unicode 码点），但长度字段填的是 **UTF-8 字节数**。8 个汉字 = 8 码点（合法）= 24 字节 → 长度字段 `00 18` |
+| **不立即生效** | 热点**已开启**时，新密码在**下次开启热点**时生效。想立刻用新密码，必须先 `closeWiFi()` 再 `openWiFi()` |
+| **非法参数同步抛异常** | Android SDK 抛 `IllegalArgumentException("Wifi密码必须为8-16个字符")`，**不发指令**；iOS SDK 静默不发送 |
+
+**应答**：`0-63` 带 1 字节结果码，映射为 JSON：
+
+```json
+{"cmd":"34","state":"0","data":{"wifi_password_state":"0"}}
+```
+
+> **注意**：`0-62` / `0-63` **不在厂商《录音笔与APP通讯协议（20260313）》的 TYPE=0 命令表里**（该表止于 CMD 28），与 AuthKey（0-50~0-55）同属 **pnote 系 SDK 的扩展命令**。设备固件不支持时不会回 `0-63`，表现为**超时**。
+
 
 ---
 
@@ -92,6 +137,7 @@ WiFi 控制命令全部属于 **TYPE=0（控制命令）**。
 | `getWiFiHotspotState()` | 是 | `00 18`（0-24） | `0-23` | `4` / `5` | 无 |
 | `getDeviceWiFiState()` | **否** | — | 无 | `2` 已连 / `3` 未连 | 纯读本机 socket |
 | `disconnectDeviceWiFi()` | **否** | — | 无 | `3` | 关闭 TCP 并清空 client |
+| `setWifiPassword(pwd)` | 是 | `00 3E`（0-62） | `0-63` | 结果码透传（cmd 34） | 新密码**下次开热点**才生效 |
 
 > **命名陷阱**：`getWiFiHotspotState()` 才是**问设备**「有没有手机连上热点」；`getDeviceWiFiState()` **不与设备通信**，只读本机 TCP socket 状态。两个名字很容易混。
 >
@@ -186,6 +232,8 @@ CTRL_WIFI_CLOSE = 21           # App→Dev 请求关闭 WiFi 传输
 CTRL_WIFI_CLOSE_RESP = 22      # Dev→App 关闭回复: 无
 CTRL_WIFI_PEER = 23            # Dev→App 有手机连接: 1B(1 已连 / 0 未连)
 CTRL_WIFI_PEER_QUERY = 24      # App→Dev 请求是否有手机连接
+CTRL_WIFI_PASSWORD = 62        # App→Dev 设置热点密码: len:2B(大端) + 密码字节
+CTRL_WIFI_PASSWORD_RESP = 63   # Dev→App 设置结果: 1B 结果码（0=成功）
 
 # ------------------------------------------------------------- wifi_state 取值
 WIFI_STATE_HOTSPOT_ON = 0        # 热点打开成功
@@ -194,6 +242,10 @@ WIFI_STATE_TCP_CONNECTED = 2     # TCP 已连接
 WIFI_STATE_TCP_DISCONNECTED = 3  # TCP 已断开
 WIFI_STATE_PEER_CONNECTED = 4    # 有手机连上热点
 WIFI_STATE_PEER_NONE = 5         # 没有手机连接热点
+
+# ------------------------------------------------------------ 热点密码参数
+WIFI_PASSWORD_MIN_CHARS = 8      # 按 Unicode 码点计
+WIFI_PASSWORD_MAX_CHARS = 16
 ```
 
 ## 5.2 帧构造（加到 `recorder/protocol.py`）
@@ -205,6 +257,32 @@ def build_wifi_command(seq: int, cmd: int) -> bytes:
     完整帧 8 字节：5A | SEQ | CRC(LE) | 02 00 | 00 | CMD
     """
     return build_command(seq, TYPE_CONTROL, cmd)
+
+
+def encode_wifi_password(password: str) -> bytes:
+    """编码热点密码参数（0-62 的 params）。
+
+    合法性按 Unicode **码点**计（8~16 个字符），但长度字段填 **UTF-8 字节数**，
+    且长度字段是 **大端**（高字节在前）—— 与设备名命令（0-60，小端）相反。
+
+    返回 bytes: [len_hi][len_lo][密码 UTF-8 字节]
+    """
+    if password is None:
+        raise ValueError("Wifi密码必须为8-16个字符")
+    chars = len(password)                     # Python str 按码点计数
+    if not (WIFI_PASSWORD_MIN_CHARS <= chars <= WIFI_PASSWORD_MAX_CHARS):
+        raise ValueError("Wifi密码必须为8-16个字符")
+    raw = password.encode("utf-8")
+    return struct.pack(">H", len(raw)) + raw
+
+
+def build_set_wifi_password(seq: int, password: str) -> bytes:
+    """构造 0-62 设置热点密码帧。
+
+    payload = 00 | 3E | len(2B 大端) | 密码 UTF-8
+    """
+    return build_command(seq, TYPE_CONTROL, CTRL_WIFI_PASSWORD,
+                         encode_wifi_password(password))
 ```
 
 ## 5.3 应答解析（加到 `recorder/device.py`）
@@ -230,6 +308,14 @@ def decode_wifi_open_resp(body: bytes) -> Tuple[int, str]:
 def decode_wifi_peer_state(body: bytes) -> bool:
     """解码 0-23 的 body：1 = 有手机连接，0 = 没有。"""
     return bool(body) and body[0] == 1
+
+
+def decode_wifi_password_result(body: bytes) -> int:
+    """解码 0-63 设置密码结果的 body：1B 结果码，0 = 成功。
+
+    对应上报 JSON：{"cmd":"34","state":"0","data":{"wifi_password_state":"N"}}
+    """
+    return body[0] if body else -1
 ```
 
 **在 `Recorder._handle_frame` 里挂上（与下载/列表分支并列）**：
@@ -250,6 +336,10 @@ if frame.type == P.TYPE_CONTROL:
         self.on_wifi_state(
             P.WIFI_STATE_PEER_CONNECTED if P.decode_wifi_peer_state(frame.body)
             else P.WIFI_STATE_PEER_NONE, "")
+        return
+    if frame.cmd == P.CTRL_WIFI_PASSWORD_RESP:
+        # 结果码 0 = 成功；对应 JSON cmd=34 的 wifi_password_state
+        self.on_wifi_password_result(P.decode_wifi_password_result(frame.body))
         return
 ```
 
@@ -442,7 +532,33 @@ async def close_wifi(rec: Recorder) -> None:
     await rec._request(P.TYPE_CONTROL, P.CTRL_WIFI_CLOSE, b"",
                        P.CTRL_WIFI_CLOSE_RESP, timeout=10.0)
     await rec.tcp.disconnect()
+
+
+async def set_wifi_password(rec: Recorder, password: str) -> int:
+    """设置热点密码，返回结果码（0 = 成功）。
+
+    ⚠️ 热点已开启时，新密码**下次开启热点**才生效；
+    想立刻用新密码，请先 close_wifi() 再 open_wifi()。
+    """
+    frame = P.build_set_wifi_password(rec._seq.next(), password)
+    # 密码命令是「带参请求」，需要自己发帧并等 0-63 应答
+    resp = await rec._request_frame(frame, P.CTRL_WIFI_PASSWORD_RESP, timeout=10.0)
+    return P.decode_wifi_password_result(resp.body)
 ```
+
+> `rec._request_frame(frame, resp_cmd, timeout=...)` 需要在 `Recorder` 里补一个
+> 「按现成帧发送并等应答」的小工具（现有 `_request()` 只接受 type/cmd/params，
+> 内部自行组帧）。或者把 `build_set_wifi_password` 拆成
+> `encode_wifi_password()` + `_request(TYPE_CONTROL, 62, params, 63)`，后者**无需新增方法**：
+>
+> ```python
+> resp = await rec._request(P.TYPE_CONTROL, P.CTRL_WIFI_PASSWORD,
+>                           P.encode_wifi_password(password),
+>                           P.CTRL_WIFI_PASSWORD_RESP, timeout=10.0)
+> return P.decode_wifi_password_result(resp.body)
+> ```
+>
+> 两种写法等价，后者改动更小。
 
 ---
 
@@ -461,6 +577,10 @@ async def close_wifi(rec: Recorder) -> None:
 | CRC 错误 | 注入坏 CRC 的帧 → 记 `crc_errors` 并重新同步，不崩溃、不卡死 |
 | 心跳 | 30 秒一次 `{0x01}`，连续 10 分钟不掉线 |
 | 断线重连 | 拔网线/关热点 → 3 秒后自动重连，最多重试 5 次后上报失败 |
+| 密码帧 | `0-62` 帧长 = `8 + 4 + 密码字节数`；`LEN = 4 + 密码字节数`；长度字段**大端** |
+| 密码长度校验 | 7 / 17 字符 / `None` → 本地抛 `ValueError`，**不发帧**；8 汉字（24 字节）→ 长度字段 `00 18` |
+| 密码应答 | 收到 `0-63` → 上报 `{"cmd":"34",…,"wifi_password_state":"0"}`，结果码 0 = 成功 |
+| 密码生效时机 | 热点开启状态下设密码 → `close_wifi()` + `open_wifi()` 后新密码才可连 |
 
 ---
 
@@ -479,6 +599,10 @@ async def close_wifi(rec: Recorder) -> None:
 | 9 | **ACK 默认关闭** | 设备要求 ACK 时才自行回 `"ACK\r\n"` |
 | 10 | **断开只应上报一次** | 主动断开与被动断开走同一个回调，避免重复上报 |
 | 11 | **CRC 与 SEQ 无关** | CRC 只覆盖 `LEN(2B) + DATA`，不含 SEQ。对拍帧时只变 SEQ 字节、CRC 不变，别误判成帧错 |
+| 12 | **密码长度字段是大端** | `0-62` 的长度字段高字节在前；**同族的设备名 `0-60` 是小端**。写反设备解不出密码长度 |
+| 13 | **密码长度按码点校验、字段填字节数** | 8 个汉字 = 8 码点（合法）但 24 字节 → 长度字段 `00 18` |
+| 14 | **新密码不立即生效** | 热点已开启时，密码**下次开热点**才生效；要立刻用需先关再开 |
+| 15 | **`0-62`/`0-63` 不在厂商协议里** | 厂商 TYPE=0 表止于 CMD 28，这两条与 AuthKey 同属 SDK 扩展；固件不支持时**超时**而非报错 |
 
 ---
 
